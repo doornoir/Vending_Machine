@@ -1,0 +1,368 @@
+
+// -----------------------------------------------------------------------------
+// Main vending machine module
+// -----------------------------------------------------------------------------
+module vending (
+    input  logic clk,
+    input  logic reset,
+    input  logic nickel,
+    input  logic dime,
+    input  logic quarter,
+    input  logic penny,
+    input  logic buy,
+    input  logic refund,
+    output logic dispense,
+    output logic nickel_out,
+    output logic dime_out,
+    output logic quarter_out,
+    output logic penny_out,
+    output logic [7:0] HEX0,   // ones digit of cents  (e.g. "5" in 75¢)
+    output logic [7:0] HEX1,   // tens digit of cents  (e.g. "7" in 75¢)
+    output logic [7:0] HEX2   // dollars digit + decimal point (e.g. "0.")
+);
+
+    // -------------------------------------------------------------------------
+    // State encoding — one state per 5-cent increment from 0 to 100
+    // -------------------------------------------------------------------------
+    typedef enum logic [4:0] {
+        S0,   S5,   S10,  S15,  S20,
+        S25,  S30,  S35,  S40,  S45,
+        S50,  S55,  S60,  S65,  S70,
+        S75,  S80,  S85,  S90,  S95,
+        S100,
+        SVEND,    // dispensing item (1 cycle)
+        SCHANGE   // returning change (1 coin per cycle)
+    } state_t;
+
+    state_t current_state, next_state;
+
+    // Change remaining to return (in cents)
+    logic [6:0] change_reg, next_change_reg;
+
+    // -------------------------------------------------------------------------
+    // State + change register (async reset)
+    // -------------------------------------------------------------------------
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset) begin
+            current_state <= S0;
+            change_reg    <= 7'd0;
+        end else begin
+            current_state <= next_state;
+            change_reg    <= next_change_reg;
+        end
+    end
+
+    // -------------------------------------------------------------------------
+    // Helper function: add cents to a state, cap at S100
+    // We use a function to keep the case statement readable
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Next-state and output logic
+    // -------------------------------------------------------------------------
+    always_comb begin
+        // Defaults
+        next_state      = current_state;
+        next_change_reg = change_reg;
+        dispense    = 1'b0;
+        nickel_out  = 1'b0;
+        dime_out    = 1'b0;
+        quarter_out = 1'b0;
+        penny_out   = 1'b0;
+
+        case (current_state)
+
+            // ------------------------------------------------------------------
+            // COIN ACCEPTING STATES
+            // Each state adds the coin value and transitions accordingly.
+            // If buy is pressed at S100, move to SVEND.
+            // If refund is pressed, move to SCHANGE with change_reg = balance.
+            // ------------------------------------------------------------------
+
+            S0: begin
+                if      (nickel)  next_state = S5;
+                else if (dime)    next_state = S10;
+                else if (quarter) next_state = S25;
+                else if (penny)   penny_out  = 1'b1; // reject penny
+                // refund with $0 does nothing
+            end
+
+            S5: begin
+                if      (nickel)  next_state = S10;
+                else if (dime)    next_state = S15;
+                else if (quarter) next_state = S30;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd5;  end
+            end
+
+            S10: begin
+                if      (nickel)  next_state = S15;
+                else if (dime)    next_state = S20;
+                else if (quarter) next_state = S35;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd10; end
+            end
+
+            S15: begin
+                if      (nickel)  next_state = S20;
+                else if (dime)    next_state = S25;
+                else if (quarter) next_state = S40;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd15; end
+            end
+
+            S20: begin
+                if      (nickel)  next_state = S25;
+                else if (dime)    next_state = S30;
+                else if (quarter) next_state = S45;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd20; end
+            end
+
+            S25: begin
+                if      (nickel)  next_state = S30;
+                else if (dime)    next_state = S35;
+                else if (quarter) next_state = S50;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd25; end
+            end
+
+            S30: begin
+                if      (nickel)  next_state = S35;
+                else if (dime)    next_state = S40;
+                else if (quarter) next_state = S55;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd30; end
+            end
+
+            S35: begin
+                if      (nickel)  next_state = S40;
+                else if (dime)    next_state = S45;
+                else if (quarter) next_state = S60;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd35; end
+            end
+
+            S40: begin
+                if      (nickel)  next_state = S45;
+                else if (dime)    next_state = S50;
+                else if (quarter) next_state = S65;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd40; end
+            end
+
+            S45: begin
+                if      (nickel)  next_state = S50;
+                else if (dime)    next_state = S55;
+                else if (quarter) next_state = S70;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd45; end
+            end
+
+            S50: begin
+                if      (nickel)  next_state = S55;
+                else if (dime)    next_state = S60;
+                else if (quarter) next_state = S75;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd50; end
+            end
+
+            S55: begin
+                if      (nickel)  next_state = S60;
+                else if (dime)    next_state = S65;
+                else if (quarter) next_state = S80;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd55; end
+            end
+
+            S60: begin
+                if      (nickel)  next_state = S65;
+                else if (dime)    next_state = S70;
+                else if (quarter) next_state = S85;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd60; end
+            end
+
+            S65: begin
+                if      (nickel)  next_state = S70;
+                else if (dime)    next_state = S75;
+                else if (quarter) next_state = S90;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd65; end
+            end
+
+            S70: begin
+                if      (nickel)  next_state = S75;
+                else if (dime)    next_state = S80;
+                else if (quarter) next_state = S95;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd70; end
+            end
+
+            S75: begin
+                if      (nickel)  next_state = S80;
+                else if (dime)    next_state = S85;
+                else if (quarter) next_state = S100;
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd75; end
+            end
+
+            S80: begin
+                if      (nickel)  next_state = S85;
+                else if (dime)    next_state = S90;
+                else if (quarter) next_state = S100; // 80+25=105, cap at 100, change=5
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd80; end
+                // Note: quarter overpay handled below in S85/S90/S95
+            end
+
+            S85: begin
+                if      (nickel)  next_state = S90;
+                else if (dime)    next_state = S95;
+                else if (quarter) next_state = S100; // overpay: change = 10
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd85; end
+            end
+
+            S90: begin
+                if      (nickel)  next_state = S95;
+                else if (dime)    next_state = S100;
+                else if (quarter) next_state = S100; // overpay: change = 15
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd90; end
+            end
+
+            S95: begin
+                if      (nickel)  next_state = S100;
+                else if (dime)    next_state = S100; // overpay: change = 5
+                else if (quarter) next_state = S100; // overpay: change = 20
+                else if (penny)   penny_out  = 1'b1;
+                else if (refund)  begin next_state = SCHANGE; next_change_reg = 7'd95; end
+            end
+
+            // At $1.00: wait for buy button
+            S100: begin
+                if (penny) penny_out = 1'b1;
+                else if (buy) begin
+                    next_state      = SVEND;
+                    next_change_reg = 7'd0; // exact or will be set below
+                end
+                else if (refund) begin
+                    next_state      = SCHANGE;
+                    next_change_reg = 7'd100;
+                end
+                // Extra coins at S100 are ignored (machine is ready to vend)
+            end
+
+            // ------------------------------------------------------------------
+            // VEND state: pulse dispense for one cycle
+            // ------------------------------------------------------------------
+            SVEND: begin
+                dispense = 1'b1;
+                if (change_reg > 7'd0)
+                    next_state = SCHANGE;
+                else
+                    next_state = S0;
+            end
+
+            // ------------------------------------------------------------------
+            // CHANGE state: return one coin per cycle, greedy (Q > D > N)
+            // ------------------------------------------------------------------
+            SCHANGE: begin
+                if (change_reg >= 7'd25) begin
+                    quarter_out     = 1'b1;
+                    next_change_reg = change_reg - 7'd25;
+                end else if (change_reg >= 7'd10) begin
+                    dime_out        = 1'b1;
+                    next_change_reg = change_reg - 7'd10;
+                end else if (change_reg >= 7'd5) begin
+                    nickel_out      = 1'b1;
+                    next_change_reg = change_reg - 7'd5;
+                end
+
+                if (next_change_reg == 7'd0)
+                    next_state = S0;
+            end
+
+            default: next_state = S0;
+
+        endcase
+    end
+
+    // -------------------------------------------------------------------------
+    // Balance to BCD conversion for 7-segment display
+    // Convert current state to cents value, then split into tens and ones
+    // -------------------------------------------------------------------------
+    logic [6:0] balance_cents;
+    logic [3:0] cents_tens, cents_ones;
+
+    always_comb begin
+        case (current_state)
+            S0:      balance_cents = 7'd0;
+            S5:      balance_cents = 7'd5;
+            S10:     balance_cents = 7'd10;
+            S15:     balance_cents = 7'd15;
+            S20:     balance_cents = 7'd20;
+            S25:     balance_cents = 7'd25;
+            S30:     balance_cents = 7'd30;
+            S35:     balance_cents = 7'd35;
+            S40:     balance_cents = 7'd40;
+            S45:     balance_cents = 7'd45;
+            S50:     balance_cents = 7'd50;
+            S55:     balance_cents = 7'd55;
+            S60:     balance_cents = 7'd60;
+            S65:     balance_cents = 7'd65;
+            S70:     balance_cents = 7'd70;
+            S75:     balance_cents = 7'd75;
+            S80:     balance_cents = 7'd80;
+            S85:     balance_cents = 7'd85;
+            S90:     balance_cents = 7'd90;
+            S95:     balance_cents = 7'd95;
+            S100:    balance_cents = 7'd100;
+            SVEND:   balance_cents = 7'd0;   // show $0.00 after vend
+            SCHANGE: balance_cents = 7'd0;   // show $0.00 during change
+            default: balance_cents = 7'd0;
+        endcase
+
+        // Split into tens and ones place of cents
+        // e.g. 75 cents → tens=7, ones=5
+        cents_tens = balance_cents / 10;
+        cents_ones = balance_cents % 10;
+    end
+
+    // -------------------------------------------------------------------------
+    // 7-segment display instantiation
+    // Display format:  HEX3  HEX2  HEX1  HEX0
+    //                   0     .     7     5      (for $0.75)
+    //
+    // HEX3 = dollar digit (always 0 or 1)
+    // HEX2 = decimal point display (always "0" with dp ON)
+    // HEX1 = tens of cents
+    // HEX0 = ones of cents
+    // -------------------------------------------------------------------------
+
+
+
+    // HEX2: always shows "0" with decimal point ON (the "0." part)
+    seg7_decoder hex2_dec (
+        .digit (4'd15),
+        .dp    (1'b0),          // decimal point ON
+        .seg   (HEX2)
+    );
+
+    // HEX1: tens digit of cents
+    seg7_decoder hex1_dec (
+        .digit (cents_tens),
+        .dp    (1'b1),
+        .seg   (HEX1)
+    );
+
+    // HEX0: ones digit of cents
+    seg7_decoder hex0_dec (
+        .digit (cents_ones),
+        .dp    (1'b1),
+        .seg   (HEX0)
+    );
+
+endmodule
+
