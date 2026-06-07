@@ -1,0 +1,140 @@
+
+// Testbench: vending_tb
+// Students: Ayush, Nour, Alan
+// Course: ECE 204
+// Description: Testbench for vending_enabled module
+// Tests: reset, nickel/dime/quarter, buy, overpay, refund, penny rejection
+
+`timescale 1ns/1ps
+
+module vending_tb;
+
+    logic clk, en, reset;
+    logic nickel, dime, quarter, penny, buy, refund;
+
+    logic dispense;
+    logic nickel_out, dime_out, quarter_out, penny_out;
+    logic [7:0] HEX0, HEX1, HEX2;
+
+    // Instantiate vending machine
+    vending_enabled dut (
+        .clk(clk),
+        .en(en),
+        .reset(reset),
+        .nickel(nickel),
+        .dime(dime),
+        .quarter(quarter),
+        .penny(penny),
+        .buy(buy),
+        .refund(refund),
+        .dispense(dispense),
+        .nickel_out(nickel_out),
+        .dime_out(dime_out),
+        .quarter_out(quarter_out),
+        .penny_out(penny_out),
+        .HEX0(HEX0),
+        .HEX1(HEX1),
+        .HEX2(HEX2)
+    );
+
+    // Clock
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    // One FSM step
+    task tick;
+    begin
+        en = 1;
+        @(posedge clk);
+        #1;
+        en = 0;
+
+        nickel  = 0;
+        dime    = 0;
+        quarter = 0;
+        penny   = 0;
+        buy     = 0;
+        refund  = 0;
+    end
+    endtask
+
+    initial begin
+
+        // Initialize signals
+        reset   = 0;
+        en      = 0;
+        nickel  = 0;
+        dime    = 0;
+        quarter = 0;
+        penny   = 0;
+        buy     = 0;
+        refund  = 0;
+
+      
+        // 1. Add a nickel
+        $display("Add Nickel");
+        nickel = 1;
+        tick;
+
+  
+        // 2. Reset 
+        $display("Reset");
+        reset = 1;
+        @(posedge clk);
+        #1;
+        reset = 0;
+
+    
+        // 3. Add a dime   
+        $display("Add Dime");
+        dime = 1;
+        tick;
+
+
+        // 4. Add a quarter
+        $display("Add Quarter");
+        quarter = 1;
+        tick;
+
+  
+        // 5. Refund
+        $display("Refund");
+        refund = 1;
+        tick;
+
+        // Give machine time to return change
+        tick;
+        tick;
+        tick;
+        tick;
+
+  
+        // 6. Add a penny
+        $display("Add Penny");
+        penny = 1;
+        tick;
+
+
+        // 7. Add four quarters
+        $display("Add Four Quarters");
+
+        quarter = 1; tick;
+        quarter = 1; tick;
+        quarter = 1; tick;
+        quarter = 1; tick;
+
+
+        // 8. Buy
+        $display("Buy");
+
+        buy = 1;
+        tick;
+
+        // Allow vend cycle
+        tick;
+
+        $display("Test Complete");
+        $stop;
+    end
+
+endmodule
