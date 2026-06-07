@@ -1,0 +1,177 @@
+// =============================================================================
+// Testbench: vending_tb
+// Authors:   Nour, Alan, Ayush
+// Course:    ECE 272
+// Description: Testbench for vending_enabled module
+// Tests: reset, nickel/dime/quarter, buy, overpay, refund, penny rejection
+// =============================================================================
+`timescale 1ns/1ps
+
+module vending_tb;
+
+    logic clk, en, reset;
+    logic nickel, dime, quarter, penny, buy, refund;
+    logic dispense, nickel_out, dime_out, quarter_out, penny_out;
+    logic [7:0] HEX0, HEX1, HEX2, HEX3;
+
+    vending_enabled dut (
+        .clk        (clk),
+        .en         (en),
+        .reset      (reset),
+        .nickel     (nickel),
+        .dime       (dime),
+        .quarter    (quarter),
+        .penny      (penny),
+        .buy        (buy),
+        .refund     (refund),
+        .dispense   (dispense),
+        .nickel_out (nickel_out),
+        .dime_out   (dime_out),
+        .quarter_out(quarter_out),
+        .penny_out  (penny_out),
+        .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3)
+    );
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    // -------------------------------------------------------------------------
+    // tick task: sets inputs, fires en, captures outputs
+    // -------------------------------------------------------------------------
+    task do_tick(
+        input  logic n, d, q, p, b, r,
+        output logic disp, nout, dout, qout, pout
+    );
+        @(negedge clk);
+        nickel=n; dime=d; quarter=q; penny=p; buy=b; refund=r;
+        en = 1;
+        @(posedge clk); #2;
+        disp=dispense; nout=nickel_out; dout=dime_out;
+        qout=quarter_out; pout=penny_out;
+        en=0;
+        nickel=0; dime=0; quarter=0; penny=0; buy=0; refund=0;
+    endtask
+
+    logic disp, nout, dout, qout, pout;
+
+    task tick_nickel;  do_tick(1,0,0,0,0,0,disp,nout,dout,qout,pout); endtask
+    task tick_dime;    do_tick(0,1,0,0,0,0,disp,nout,dout,qout,pout); endtask
+    task tick_quarter; do_tick(0,0,1,0,0,0,disp,nout,dout,qout,pout); endtask
+    task tick_penny;   do_tick(0,0,0,1,0,0,disp,nout,dout,qout,pout); endtask
+    task tick_buy;     do_tick(0,0,0,0,1,0,disp,nout,dout,qout,pout); endtask
+    task tick_refund;  do_tick(0,0,0,0,0,1,disp,nout,dout,qout,pout); endtask
+    task tick_idle;    do_tick(0,0,0,0,0,0,disp,nout,dout,qout,pout); endtask
+
+    initial begin
+        {reset,nickel,dime,quarter,penny,buy,refund,en} = '0;
+        @(posedge clk); #1;
+
+        // =====================================================================
+        // TEST 1: Reset clears balance
+        // =====================================================================
+        $display("=== TEST 1: Reset ===");
+        tick_quarter; tick_quarter;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        tick_idle;
+        if (dispense || nickel_out || dime_out || quarter_out)
+            $display("FAIL T1: outputs not clean after reset");
+        else
+            $display("PASS T1: reset works");
+
+        // =====================================================================
+        // TEST 2: 4 quarters + buy = vend, no change
+        // =====================================================================
+        $display("=== TEST 2: 4 Quarters + Buy ===");
+        tick_quarter; tick_quarter; tick_quarter; tick_quarter;
+        tick_buy;
+        if (!disp)
+            $display("FAIL T2: expected dispense");
+        else
+            $display("PASS T2: dispense on exact $1.00");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 3: 10 dimes + buy = vend, no change
+        // =====================================================================
+        $display("=== TEST 3: 10 Dimes + Buy ===");
+        repeat(10) tick_dime;
+        tick_buy;
+        if (!disp)
+            $display("FAIL T3: expected dispense");
+        else
+            $display("PASS T3: dispense after 10 dimes");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 4: 20 nickels + buy = vend, no change
+        // =====================================================================
+        $display("=== TEST 4: 20 Nickels + Buy ===");
+        repeat(20) tick_nickel;
+        tick_buy;
+        if (!disp)
+            $display("FAIL T4: expected dispense");
+        else
+            $display("PASS T4: dispense after 20 nickels");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 5: Overpay $1.20 = vend + 2 dimes change
+        // =====================================================================
+        $display("=== TEST 5: Overpay + Change ===");
+        tick_quarter; tick_quarter; tick_quarter; // 75c
+        tick_dime;    tick_dime;                  // 95c
+        tick_quarter;                             // 120c -> vend + 20c change
+        if (!disp)
+            $display("FAIL T5a: expected dispense");
+        else
+            $display("PASS T5a: dispense on overpay");
+        tick_idle;
+        if (!dout)
+            $display("FAIL T5b: expected dime_out");
+        else
+            $display("PASS T5b: first dime returned");
+        tick_idle;
+        if (!dout)
+            $display("FAIL T5c: expected second dime_out");
+        else
+            $display("PASS T5c: second dime returned");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 6: Refund $0.75 - returns 2 quarters then remaining change
+        // =====================================================================
+        $display("=== TEST 6: Refund $0.75 ===");
+        tick_quarter; tick_quarter; tick_quarter; // 75c
+        tick_refund;
+        if (!qout) $display("FAIL T6a: expected quarter_out"); else $display("PASS T6a: quarter returned");
+        tick_idle;
+        if (!qout) $display("FAIL T6b: expected quarter_out"); else $display("PASS T6b: quarter returned");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 7: Penny rejection
+        // =====================================================================
+        $display("=== TEST 7: Penny Rejection ===");
+        tick_penny;
+        if (!pout)
+            $display("FAIL T7: expected penny_out");
+        else
+            $display("PASS T7: penny rejected");
+        tick_idle;
+
+        // =====================================================================
+        // TEST 8: Refund with $0.00 - nothing should happen
+        // =====================================================================
+        $display("=== TEST 8: Refund with $0.00 ===");
+        tick_refund;
+        tick_idle;
+        if (nickel_out || dime_out || quarter_out || dispense)
+            $display("FAIL T8: unexpected output on empty refund");
+        else
+            $display("PASS T8: empty refund does nothing");
+
+        $display("\n=== ALL TESTS COMPLETE ===");
+        $stop;
+    end
+
+endmodule
